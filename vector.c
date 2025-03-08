@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <unistd.h>
+#include <ctype.h>
 
 #define UTIL_IMPLEMENTATION
 #include "util.h"
@@ -53,6 +54,42 @@ void string_delete(String *str) {
     free(str->data);
 }
 
+
+struct idx_prob_map {
+    size_t index;
+    float probability; 
+};
+int idx_prob_map_cmp_desc(const void *a, const void *b) {
+    float pa = ((struct idx_prob_map *)a)->probability;
+    float pb = ((struct idx_prob_map *)b)->probability;
+    if (pa > pb) return -1;
+    if (pa < pb) return 1;
+    return 0;
+}
+
+void
+print_most_likely_next_symbols(HDVector *symbols, size_t symbol_count, HDVector *query, size_t count)
+{
+    UTIL_ASSERT(symbols);
+    UTIL_ASSERT(query);
+
+    struct idx_prob_map pmap[symbol_count];
+    memset(pmap, 0, sizeof(pmap));
+
+    for (size_t i = 0; i < symbol_count; i++) {
+        pmap[i].index = i;
+        pmap[i].probability = hdvector_distance(&symbols[i], query);
+    }
+
+    qsort(pmap, symbol_count, sizeof(*pmap), idx_prob_map_cmp_desc);
+
+    for (size_t i = 0; i < count; i++) {
+        printf("%02zX '%c' %.04f\n",
+               pmap[i].index,
+               isprint(pmap[i].index)?(char)pmap[i].index:'_',
+               pmap[i].probability);
+    }
+}
 
 
 void
@@ -131,11 +168,11 @@ main(int argc, char *argv[])
             util_log("FATAL", "unknown option '%s'", argv[1]);
             help(argv[0]);
         }
-        if (access(argv[2], F_OK) != 0) {
-            util_log("FATAL", "could not access file '%s'", argv[1]);
+        if (!util_file_exists(argv[2])) {
+            util_log("FATAL", "could not access file '%s'", argv[2]);
             help(argv[0]);
         }
-        if (access(argv[3], F_OK) == 0) {
+        if (util_file_exists(argv[3])) {
             util_log("FATAL", "found existing profile %s", argv[3]);
             help(argv[0]);
         }
@@ -143,7 +180,7 @@ main(int argc, char *argv[])
         profile_filename = argv[3];
     }
     else if (argc == 2) {
-        if (access(argv[1], F_OK) != 0) {
+        if (!util_file_exists(argv[1])) {
             util_log("FATAL", "could not access file '%s'", argv[1]);
             help(argv[0]);
         }
@@ -166,6 +203,25 @@ main(int argc, char *argv[])
     }
 
     // get input, show probability of output
+
+    char input[16];
+    for (;;) {
+        if (!fgets(input, sizeof(input), stdin)) break;
+        if (!strcmp(input, "q")) break;
+
+        uint8_t c0 = (uint8_t)input[0];
+        uint8_t c1 = (uint8_t)input[1];
+
+        HDVector hdv0, hdv1, result;
+        hdvector_copy(&hdv0, &symbol_table[c0]);
+        hdvector_copy(&hdv1, &symbol_table[c1]);
+        hdvector_shift(&hdv0, 2);
+        hdvector_shift(&hdv1, 1);
+        hdvector_mult(&hdv0, &hdv1, &result);
+        hdvector_mult(&profile, &result, &result);
+
+        print_most_likely_next_symbols(symbol_table, ARRLEN(symbol_table), &result, 5);
+    }
 
     return 0;
 }

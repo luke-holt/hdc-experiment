@@ -100,8 +100,6 @@ hdvector_store_to_file(const char *filename, HDVector *profile, HDVector *symbol
     uint32_t magic_num;
     bool success = false;
 
-    util_log("TODO", "check if file exists");
-
     file = fopen(filename, "wb");
     if (!file) return false;
 
@@ -122,3 +120,14 @@ defer:
     return success;
 }
 
+float
+hdvector_distance(HDVector *a, HDVector *b)
+{
+    size_t count = 0;
+    for (size_t i = 0; i < ARRLEN(a->data); i++) {
+        uint32_t most = (a->data[i] >> 32) & 0xFFFFFFFF;
+        uint32_t least = a->data[i] & 0xFFFFFFFF;
+        count += bitcount(most) + bitcount(least);
+    }
+    return (float)count / (float)DIMENSIONS;
+}

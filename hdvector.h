@@ -15,5 +15,6 @@ void hdvector_copy(HDVector *dst, const HDVector *src);
 void hdvector_mult(HDVector *a, HDVector *b, HDVector *out);
 bool hdvector_load_from_file(const char *filename, HDVector *profile, HDVector *symbols, size_t count);
 bool hdvector_store_to_file(const char *filename, HDVector *profile, HDVector *symbols, size_t count);
+float hdvector_distance(HDVector *a, HDVector *b);
 
 #endif // HDVECTOR_H

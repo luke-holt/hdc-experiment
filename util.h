@@ -4,11 +4,13 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 
 
 #define ARRLEN(arr) (sizeof(arr)/sizeof(*arr))
 
 #define UTIL_ASSERT(cond) if (!(cond)) { util_log("ASSERT", "failed assertion"); abort(); }
+#define TODO(msg) util_log("TODO", "%s:%s:%d %s", __FILE__, __func__, __LINE__, msg)
 
 #define XORSHIFT128_RAND_MAX ((uint32_t)0xFFFFFFFFu)
 uint32_t xorshift128(uint32_t *state);
@@ -17,6 +19,8 @@ uint32_t bitcount(uint32_t word);
 
 void util_log(const char *tag, const char *fmt, ...);
 
+bool util_file_exists(const char *filename);
+
 
 #endif // UTIL_H
 
@@ -24,6 +28,11 @@ void util_log(const char *tag, const char *fmt, ...);
 #ifdef UTIL_IMPLEMENTATION
 
 #include <stdarg.h>
+#include <unistd.h>
+
+bool util_file_exists(const char *filename) {
+    return access(filename, F_OK) == 0;
+}
 
 void util_log(const char *tag, const char *fmt, ...) {
     fprintf(stderr, "[%s] ", tag);
