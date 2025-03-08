@@ -6,7 +6,9 @@
 #include <stdlib.h>
 
 
-#define UTIL_ASSERT(cond) if (!cond) { util_log("ASSERT", "failed assertion"); abort(); }
+#define ARRLEN(arr) (sizeof(arr)/sizeof(*arr))
+
+#define UTIL_ASSERT(cond) if (!(cond)) { util_log("ASSERT", "failed assertion"); abort(); }
 
 #define XORSHIFT128_RAND_MAX ((uint32_t)0xFFFFFFFFu)
 uint32_t xorshift128(uint32_t *state);

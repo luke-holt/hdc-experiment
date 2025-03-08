@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <string.h>
+#include <unistd.h>
 
 #define UTIL_IMPLEMENTATION
 #include "util.h"
@@ -25,23 +27,23 @@ bool string_load_from_file(const char *filename, String *str) {
     if (!file) return false;
 
     rc = fseek(file, 0, SEEK_END);
-    if (!rc) goto defer;
+    if (rc) goto defer;
 
     str->size = ftell(file);
 
     rc = fseek(file, 0, SEEK_SET);
-    if (!rc) goto defer;
+    if (rc) goto defer;
 
     str->data = malloc(str->size);
     UTIL_ASSERT(str->data);
 
-    rc = fread(str->data, str->size, 1, file);
+    rc = fread(str->data, 1, str->size, file);
     if (rc != str->size) goto defer;
 
     success = true;
 
 defer:
-    fclose(file);
+    (void)fclose(file);
     return success;
 }
 
@@ -53,29 +55,118 @@ void string_delete(String *str) {
 
 
 
-#define FILENAME "./test.txt"
-
-int
-main(void)
+void
+profile_vector_add(uint32_t *sum, HDVector *vector)
 {
-    HDVector *symbol_table = malloc(sizeof(HDVector) * 27);
-    UTIL_ASSERT(symbol_table);
+    UTIL_ASSERT(sum);
+    UTIL_ASSERT(vector);
+    for (size_t i = 0; i < ARRLEN(vector->data); i++) {
+        for (size_t bit = 0; bit < BITS_IN_U64; bit++) {
+            sum[i*BITS_IN_U64+bit] += (vector->data[i] >> bit) & 1;
+        }
+    }
+}
 
-    for (size_t i = 0; i < 27; i++)
-        hdvector_init_random(&symbol_table[i]);
+void
+compute_new_profile(const char *filename, HDVector *profile, HDVector *symbols, size_t count)
+{
+    UTIL_ASSERT(filename);
+    UTIL_ASSERT(profile);
+    UTIL_ASSERT(symbols);
+    UTIL_ASSERT(count == 256);
 
+    uint32_t sumvector[DIMENSIONS] = {0};
     String content;
 
-    if (!string_load_from_file(FILENAME, &content)) {
-        util_log("failed to open %s", FILENAME);
-        return 1;
+    if (!string_load_from_file(filename, &content)) {
+        util_log("FATAL", "failed to open %s", filename);
+        exit(1);
     }
+
+    hdvector_init_random(symbols, count);
 
     for (size_t i = 0; i < content.size - 2; i++) {
+        char trigram[3] = { content.data[i], content.data[i+1], content.data[i+2] };
 
+        HDVector hdv[3];
+        hdvector_copy(&hdv[0], &symbols[trigram[0]]);
+        hdvector_copy(&hdv[1], &symbols[trigram[1]]);
+        hdvector_copy(&hdv[2], &symbols[trigram[2]]);
+
+        hdvector_shift(&hdv[0], 2);
+        hdvector_shift(&hdv[1], 1);
+
+        hdvector_mult(&hdv[0], &hdv[1], &hdv[0]);
+        hdvector_mult(&hdv[0], &hdv[2], &hdv[0]);
+
+        profile_vector_add(sumvector, &hdv[0]);
     }
 
-    free(symbol_table);
+    memset(profile, 0, sizeof(*profile));
+
+    for (size_t i = 0; i < DIMENSIONS; i++)
+        profile->data[i/BITS_IN_U64] |= (sumvector[i] > (256/2) << (i&(BITS_IN_U64-1)));
+
+    string_delete(&content);
+}
+
+void
+help(const char *prog)
+{
+    util_log("INFO", "Usage: %s [-n textfile] profile", prog);
+    exit(0);
+}
+
+int
+main(int argc, char *argv[])
+{
+    const char *profile_filename;
+    const char *text_filename;
+
+    if (argc != 2 && argc != 4) {
+        help(argv[0]);
+    }
+    else if (argc == 4) {
+        if (strcmp("-n", argv[1]) != 0) {
+            util_log("FATAL", "unknown option '%s'", argv[1]);
+            help(argv[0]);
+        }
+        if (access(argv[2], F_OK) != 0) {
+            util_log("FATAL", "could not access file '%s'", argv[1]);
+            help(argv[0]);
+        }
+        if (access(argv[3], F_OK) == 0) {
+            util_log("FATAL", "found existing profile %s", argv[3]);
+            help(argv[0]);
+        }
+        text_filename = argv[2];
+        profile_filename = argv[3];
+    }
+    else if (argc == 2) {
+        if (access(argv[1], F_OK) != 0) {
+            util_log("FATAL", "could not access file '%s'", argv[1]);
+            help(argv[0]);
+        }
+        text_filename = NULL;
+        profile_filename = argv[1];
+    }
+
+    HDVector profile;
+    HDVector symbol_table[256];
+
+    if (text_filename) {
+        compute_new_profile(text_filename, &profile, symbol_table, ARRLEN(symbol_table));
+        hdvector_store_to_file(profile_filename, &profile, symbol_table, ARRLEN(symbol_table));
+    }
+    else {
+        if (!hdvector_load_from_file(profile_filename, &profile, symbol_table, ARRLEN(symbol_table))) {
+            util_log("FATAL", "could not load profile '%s'", profile_filename);
+            exit(1);
+        }
+    }
+
+    // get input, show probability of output
+
     return 0;
 }
 
