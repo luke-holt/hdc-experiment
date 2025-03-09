@@ -1,8 +1,8 @@
 #!/usr/bin/env sh
 
-mkdir -p build
+mkdir -p bin
 
-gcc -o build/vector hdvector.c vector.c
+gcc -o bin/vector hdvector.c vector.c
 
-gcc -o build/symbolcount symbolcount.c
+gcc -o bin/symbolcount symbolcount.c
 

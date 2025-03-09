@@ -141,8 +141,9 @@ compute_new_profile(const char *filename, HDVector *profile, HDVector *symbols, 
 
     memset(profile, 0, sizeof(*profile));
 
-    for (size_t i = 0; i < DIMENSIONS; i++)
-        profile->data[i/BITS_IN_U64] |= (sumvector[i] > (256/2) << (i&(BITS_IN_U64-1)));
+    for (size_t i = 0; i < DIMENSIONS; i++) {
+        profile->data[i/BITS_IN_U64] |= (sumvector[i] > ((content.size-2)/2) << (i&(BITS_IN_U64-1)));
+    }
 
     string_delete(&content);
 }
@@ -205,7 +206,11 @@ main(int argc, char *argv[])
     // get input, show probability of output
 
     char input[16];
+
     for (;;) {
+
+        memset(input, 0, sizeof(input));
+
         if (!fgets(input, sizeof(input), stdin)) break;
         if (!strcmp(input, "q")) break;
 
