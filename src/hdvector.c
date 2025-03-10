@@ -70,7 +70,7 @@ hdvector_load_from_file(const char *filename, HDVector *profile, HDVector *symbo
     n = fread(&magic_num, sizeof(magic_num), 1, file);
     if (n != 1) goto defer;
     if (magic_num != HDVECTOR_FILE_MAGIC_NUMBER) {
-        util_log("WARN", "invalid HDVector file");
+        util_log("WARN", "%s: invalid HDVector file", __func__);
         goto defer;
     }
 

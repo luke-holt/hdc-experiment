@@ -8,51 +8,13 @@
 
 #define UTIL_IMPLEMENTATION
 #include "util.h"
-
 #include "hdvector.h"
 
-typedef struct {
-    size_t size;
-    char *data;
-} String;
 
-bool string_load_from_file(const char *filename, String *str) {
-    UTIL_ASSERT(filename);
-    UTIL_ASSERT(str);
+#define SYMCOUNT (27)
+HDVector hdv_symbol_table[SYMCOUNT] = {0};
+HDVector hdv_profile = {0};
 
-    FILE *file;
-    int rc;
-    bool success = false;
-
-    file = fopen(filename, "r");
-    if (!file) return false;
-
-    rc = fseek(file, 0, SEEK_END);
-    if (rc) goto defer;
-
-    str->size = ftell(file);
-
-    rc = fseek(file, 0, SEEK_SET);
-    if (rc) goto defer;
-
-    str->data = malloc(str->size);
-    UTIL_ASSERT(str->data);
-
-    rc = fread(str->data, 1, str->size, file);
-    if (rc != str->size) goto defer;
-
-    success = true;
-
-defer:
-    (void)fclose(file);
-    return success;
-}
-
-void string_delete(String *str) {
-    UTIL_ASSERT(str);
-    UTIL_ASSERT(str->data);
-    free(str->data);
-}
 
 char
 symbol_to_char(uint8_t s)
@@ -79,41 +41,13 @@ char_to_symbol(char c)
     return sym;
 }
 
-
-struct prob_map {
-    size_t index;
-    float probability; 
-};
+struct prob_map { size_t index; float probability; };
 int prob_map_cmp_asc(const void *a, const void *b) {
     float pa = ((struct prob_map *)a)->probability;
     float pb = ((struct prob_map *)b)->probability;
     if (pa > pb) return 1;
     if (pa < pb) return -1;
     return 0;
-}
-
-void
-print_most_likely_next_symbols(HDVector *symbols, size_t symbol_count, HDVector *query, size_t count)
-{
-    UTIL_ASSERT(symbols);
-    UTIL_ASSERT(query);
-
-    struct prob_map pmap[symbol_count];
-    memset(pmap, 0, sizeof(pmap));
-
-    for (size_t i = 0; i < symbol_count; i++) {
-        pmap[i].index = i;
-        pmap[i].probability = hdvector_distance(&symbols[i], query);
-    }
-
-    qsort(pmap, symbol_count, sizeof(*pmap), prob_map_cmp_asc);
-
-    for (size_t i = 0; i < count; i++) {
-        printf("%02zX '%c' %.04f\n",
-               pmap[i].index,
-               symbol_to_char(pmap[i].index),
-               pmap[i].probability);
-    }
 }
 
 void
@@ -129,31 +63,9 @@ profile_vector_add(uint32_t *sum, HDVector *vector)
 }
 
 void
-tmp(void)
-{
-    HDVector v[11], pv;
-    hdvector_init_random(v, ARRLEN(v));
-
-    uint32_t profile[DIMENSIONS] = {0};
-
-    for (size_t i = 0; i < ARRLEN(v); i++)
-        profile_vector_add(profile, &v[i]);
-
-    for (size_t i = 0; i < DIMENSIONS; i++)
-        pv.data[i/BITS_IN_U64] |= ((profile[i] > (ARRLEN(v)/2)) << (i&(BITS_IN_U64-1)));
-
-    printf("0.1 %f\n", hdvector_distance(&v[0], &v[1]));
-    for (size_t i = 0; i < ARRLEN(v); i++)
-        printf("%02zu.p %f\n", i, hdvector_distance(&v[i], &pv));
-}
-
-void
-compute_new_profile(const char *filename, HDVector *profile, HDVector *symbols, size_t count)
+make_profile(const char *filename)
 {
     UTIL_ASSERT(filename);
-    UTIL_ASSERT(profile);
-    UTIL_ASSERT(symbols);
-    UTIL_ASSERT(count == 27);
 
     uint32_t sumvector[DIMENSIONS] = {0};
     uint32_t skipped = 0;
@@ -164,7 +76,7 @@ compute_new_profile(const char *filename, HDVector *profile, HDVector *symbols, 
         exit(1);
     }
 
-    hdvector_init_random(symbols, count);
+    hdvector_init_random(hdv_symbol_table, SYMCOUNT);
 
     for (size_t i = 0; i < content.size - 2; i++) {
         uint8_t a = char_to_symbol(content.data[i+0]);
@@ -178,9 +90,9 @@ compute_new_profile(const char *filename, HDVector *profile, HDVector *symbols, 
         }
 
         HDVector hdv[3];
-        hdvector_copy(&hdv[0], &symbols[a]);
-        hdvector_copy(&hdv[1], &symbols[b]);
-        hdvector_copy(&hdv[2], &symbols[c]);
+        hdvector_copy(&hdv[0], &hdv_symbol_table[a]);
+        hdvector_copy(&hdv[1], &hdv_symbol_table[b]);
+        hdvector_copy(&hdv[2], &hdv_symbol_table[c]);
 
         hdvector_shift(&hdv[0], 2);
         hdvector_shift(&hdv[1], 1);
@@ -191,10 +103,8 @@ compute_new_profile(const char *filename, HDVector *profile, HDVector *symbols, 
         profile_vector_add(sumvector, &hdv[0]);
     }
 
-    memset(profile, 0, sizeof(*profile));
-
     for (size_t i = 0; i < DIMENSIONS; i++) {
-        profile->data[i/BITS_IN_U64] |= ((sumvector[i] > ((content.size-2-skipped)/2)) << (i&(BITS_IN_U64-1)));
+        hdv_profile.data[i/BITS_IN_U64] |= ((sumvector[i] > ((content.size-2-skipped)/2)) << (i&(BITS_IN_U64-1)));
     }
 
     string_delete(&content);
@@ -229,21 +139,18 @@ digram_prob_map(HDVector *symbols, size_t count, HDVector *profile, struct prob_
 }
 
 void
-digram_table(HDVector *symbols, size_t count, HDVector *profile, float distance_threshold, const char *filename)
+digram_table(float distance_threshold, const char *filename)
 {
-    UTIL_ASSERT(symbols);
+    uint32_t results[SYMCOUNT*SYMCOUNT] = {0};
 
-    uint32_t *results = malloc(count*count*sizeof(uint32_t));
-    memset(results, 0, count*count*sizeof(uint32_t));
+    struct prob_map pmap[SYMCOUNT];
 
-    struct prob_map pmap[count];
-
-    for (size_t i = 0; i < count; i++) {
-        for (size_t j = 0; j < count; j++) {
-            digram_prob_map(symbols, count, profile, pmap, i, j);
-            for (size_t k = 0; k < count; k++) {
+    for (size_t i = 0; i < SYMCOUNT; i++) {
+        for (size_t j = 0; j < SYMCOUNT; j++) {
+            digram_prob_map(hdv_symbol_table, SYMCOUNT, &hdv_profile, pmap, i, j);
+            for (size_t k = 0; k < SYMCOUNT; k++) {
                 if (pmap[k].probability < distance_threshold) {
-                    results[i*count+j]++;
+                    results[i*SYMCOUNT+j]++;
                 }
                 else continue;
             }
@@ -259,111 +166,142 @@ digram_table(HDVector *symbols, size_t count, HDVector *profile, float distance_
     fputc(',', file);
 
     // title row
-    for (size_t i = 0; i < count; i++)
+    for (size_t i = 0; i < SYMCOUNT; i++)
         fprintf(file, "%c,", symbol_to_char(i));
     fputc('\n', file);
 
     // rows
-    for (size_t i = 0; i < count; i++) {
+    for (size_t i = 0; i < SYMCOUNT; i++) {
         fprintf(file, "%c,", symbol_to_char(i));
         // cols
-        for (size_t j = 0; j < count; j++) {
-            fprintf(file, "%d,", results[j*count+i]);
+        for (size_t j = 0; j < SYMCOUNT; j++) {
+            fprintf(file, "%d,", results[j*SYMCOUNT+i]);
         }
         fputc('\n', file);
     }
 
     fclose(file);
 
-    free(results);
+    util_log("INFO", "wrote digram table to %s", filename);
+}
+
+void
+load_profile(const char *filename)
+{
+    if (!hdvector_load_from_file(filename, &hdv_profile, hdv_symbol_table, ARRLEN(hdv_symbol_table))) {
+        util_log("FATAL", "could not load profile '%s'", filename);
+        exit(1);
+    }
+    util_log("INFO", "loaded profile from file %s", filename);
 }
 
 void
 help(const char *prog)
 {
-    util_log("INFO", "Usage: %s [-n textfile] profile", prog);
-    exit(0);
+    fprintf(stdout, "Usage: %s {make-profile <text> | digram-table <output-csv> | interactive} <profile>\n", prog);
+    fprintf(stdout, "\n");
+    fprintf(stdout, "Commands:\n");
+    fprintf(stdout, "    make-profile  generate hyper-dimensional vector profile based on <text>\n");
+    fprintf(stdout, "    digram-table  generate digram table for <profile>. write to <output-csv>\n");
+    fprintf(stdout, "    interactive   display most likely letters following user-input digram, based on <profile>\n");
 }
 
 int
 main(int argc, char *argv[])
 {
-    // tmp(); return 0;
+    const char *profile_filename = NULL;
+    const char *text_filename = NULL;
+    const char *digram_filename = NULL;
 
-    const char *profile_filename;
-    const char *text_filename;
+    bool make_profile_arg = false;
+    bool digram_table_arg = false;
+    bool interactive_arg = false;
 
-    if (argc != 2 && argc != 4) {
-        help(argv[0]);
-    }
-    else if (argc == 4) {
-        if (strcmp("-n", argv[1]) != 0) {
-            util_log("FATAL", "unknown option '%s'", argv[1]);
-            help(argv[0]);
-        }
-        if (!util_file_exists(argv[2])) {
-            util_log("FATAL", "could not access file '%s'", argv[2]);
-            help(argv[0]);
-        }
-        if (util_file_exists(argv[3])) {
-            util_log("FATAL", "found existing profile %s", argv[3]);
-            help(argv[0]);
-        }
+    if (argc == 4 && STREQ("make-profile", argv[1])) {
         text_filename = argv[2];
         profile_filename = argv[3];
-    }
-    else if (argc == 2) {
-        if (!util_file_exists(argv[1])) {
-            util_log("FATAL", "could not access file '%s'", argv[1]);
-            help(argv[0]);
-        }
-        text_filename = NULL;
-        profile_filename = argv[1];
+        make_profile_arg = true;
+    } else if (argc == 4 && STREQ("digram-table", argv[1])) {
+        profile_filename = argv[3];
+        digram_filename = argv[2];
+        digram_table_arg = true;
+    } else if (argc == 3 && STREQ("interactive", argv[1])) {
+        profile_filename = argv[2];
+        interactive_arg = true;
+    } else {
+        help(argv[0]);
+        exit(1);
     }
 
-    HDVector profile;
-    HDVector symbol_table[27];
-
-    if (text_filename) {
-        compute_new_profile(text_filename, &profile, symbol_table, ARRLEN(symbol_table));
+    if (make_profile_arg) {
+        make_profile(text_filename);
         util_log("INFO", "generated new profile based on '%s'", text_filename);
 
         util_log("INFO", "saving profile to '%s'", profile_filename);
-        if (!hdvector_store_to_file(profile_filename, &profile, symbol_table, ARRLEN(symbol_table))) {
+        if (!hdvector_store_to_file(profile_filename, &hdv_profile, hdv_symbol_table, ARRLEN(hdv_symbol_table)))
             util_log("WARN", "failed to store profile", profile_filename);
-        }
-    }
-    else {
-        if (!hdvector_load_from_file(profile_filename, &profile, symbol_table, ARRLEN(symbol_table))) {
-            util_log("FATAL", "could not load profile '%s'", profile_filename);
-            exit(1);
-        }
-        util_log("INFO", "loaded profile from file %s", profile_filename);
+
+        exit(0);
     }
 
-    // get input, show probability of output
+    if (digram_table_arg) {
+        load_profile(profile_filename);
+        digram_table(0.492, digram_filename);
+        exit(0);
+    }
 
-    digram_table(symbol_table, ARRLEN(symbol_table), &profile, 0.492, "digram-table.csv");
-    // return 0;
+    UTIL_ASSERT(interactive_arg);
+
+    load_profile(profile_filename);
 
     char input[16];
 
     for (;;) {
+        fprintf(stdout, "Enter digram (q to quit): ");
 
         memset(input, 0, sizeof(input));
 
+        // read stdin
         if (!fgets(input, sizeof(input), stdin)) break;
-        if (!strcmp(input, "q")) break;
+
+        // check for quit cmd
+        if (input[0] == 'q' && input[1] == '\n') break;
+
+        if (!(isalpha(input[0]) || input[0] == ' ') ||
+            !(isalpha(input[1]) || input[1] == ' ') ||
+            strlen(input) != 3)
+        {
+            fprintf(stdout, ANSI_COLOR_RED"E: "ANSI_COLOR_RESET);
+            fprintf(stdout, "Invalid digram. Must be a combination of two letters, or a letter and a space.\n");
+            continue;
+        }
 
         // form query vector
         HDVector query;
         size_t indices[2] = { char_to_symbol(input[0]), char_to_symbol(input[1]) };
-        hdvector_form_query(symbol_table, ARRLEN(symbol_table), indices, ARRLEN(indices), &query);
+        hdvector_form_query(hdv_symbol_table, SYMCOUNT, indices, ARRLEN(indices), &query);
 
         // perform query
-        hdvector_mult(&profile, &query, &query);
+        hdvector_mult(&hdv_profile, &query, &query);
 
-        print_most_likely_next_symbols(symbol_table, ARRLEN(symbol_table), &query, 27);
+        struct prob_map pmap[SYMCOUNT];
+        memset(pmap, 0, sizeof(pmap));
+
+        // populate probability map
+        for (size_t i = 0; i < SYMCOUNT; i++) {
+            pmap[i].index = i;
+            pmap[i].probability = hdvector_distance(&hdv_symbol_table[i], &query);
+        }
+
+        // sort by probability, ascending
+        qsort(pmap, SYMCOUNT, sizeof(*pmap), prob_map_cmp_asc);
+
+        // print in order of most likely (lowest distance)
+        for (size_t i = 0; i < SYMCOUNT; i++) {
+            printf("  '%c': %.04f\n",
+                   symbol_to_char(pmap[i].index),
+                   pmap[i].probability);
+        }
     }
 
     return 0;
