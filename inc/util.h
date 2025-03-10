@@ -9,7 +9,7 @@
 
 #define ARRLEN(arr) (sizeof(arr)/sizeof(*arr))
 
-#define UTIL_ASSERT(cond) if (!(cond)) { util_log("ASSERT", "failed assertion"); abort(); }
+#define UTIL_ASSERT(cond) if (!(cond)) { util_log("ASSERT", "%s:%s:%d aborted", __FILE__, __func__, __LINE__); abort(); }
 #define TODO(msg) util_log("TODO", "%s:%s:%d %s", __FILE__, __func__, __LINE__, msg)
 
 #define XORSHIFT128_RAND_MAX ((uint32_t)0xFFFFFFFFu)

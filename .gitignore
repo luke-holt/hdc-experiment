@@ -1,4 +1,7 @@
 bin/
 *.txt
+*.txt*
 *.hdv
-
+*.csv
+compile_commands.json
+.cache/

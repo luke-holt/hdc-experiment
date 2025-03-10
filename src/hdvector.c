@@ -123,11 +123,30 @@ defer:
 float
 hdvector_distance(HDVector *a, HDVector *b)
 {
-    size_t count = 0;
+    UTIL_ASSERT(a);
+    UTIL_ASSERT(b);
+    size_t diff = 0;
     for (size_t i = 0; i < ARRLEN(a->data); i++) {
-        uint32_t most = (a->data[i] >> 32) & 0xFFFFFFFF;
-        uint32_t least = a->data[i] & 0xFFFFFFFF;
-        count += bitcount(most) + bitcount(least);
+        uint64_t word = a->data[i] ^ b->data[i];
+        uint32_t most = (word >> 32) & 0xFFFFFFFF;
+        uint32_t least = word & 0xFFFFFFFF;
+        diff += bitcount(most) + bitcount(least);
     }
-    return (float)count / (float)DIMENSIONS;
+    return (float)diff / (float)DIMENSIONS;
 }
+
+void
+hdvector_form_query(HDVector *symbols, size_t scount, size_t *indices, size_t icount, HDVector *query)
+{
+    UTIL_ASSERT(symbols && scount);
+    UTIL_ASSERT(indices && icount);
+    UTIL_ASSERT(query);
+    HDVector tmp, q = {0};
+    for (size_t i = 0; i < icount; i++) {
+        hdvector_copy(&tmp, &symbols[indices[i]]);
+        hdvector_shift(&tmp, icount-i);
+        hdvector_mult(&tmp, &q, &q);
+    }
+    *query = q;
+}
+
