@@ -10,6 +10,7 @@
 #include "util.h"
 #include "hdvector.h"
 
+#define DISTANCE_THRESHOLD (0.492)
 
 #define SYMCOUNT (27)
 HDVector hdv_symbol_table[SYMCOUNT] = {0};
@@ -51,18 +52,6 @@ int prob_map_cmp_asc(const void *a, const void *b) {
 }
 
 void
-profile_vector_add(uint32_t *sum, HDVector *vector)
-{
-    UTIL_ASSERT(sum);
-    UTIL_ASSERT(vector);
-    for (size_t i = 0; i < ARRLEN(vector->data); i++) {
-        for (size_t bit = 0; bit < BITS_IN_U64; bit++) {
-            sum[i*BITS_IN_U64+bit] += (vector->data[i] >> bit) & 1;
-        }
-    }
-}
-
-void
 make_profile(const char *filename)
 {
     UTIL_ASSERT(filename);
@@ -100,9 +89,15 @@ make_profile(const char *filename)
         hdvector_mult(&hdv[0], &hdv[1], &hdv[0]);
         hdvector_mult(&hdv[0], &hdv[2], &hdv[0]);
 
-        profile_vector_add(sumvector, &hdv[0]);
+        // add trigram vector bits to sumvector
+        for (size_t i = 0; i < ARRLEN(hdv[0].data); i++) {
+            for (size_t bit = 0; bit < BITS_IN_U64; bit++) {
+                sumvector[i*BITS_IN_U64+bit] += (hdv[0].data[i] >> bit) & 1;
+            }
+        }
     }
 
+    // populate profile based on sumvector bit totals
     for (size_t i = 0; i < DIMENSIONS; i++) {
         hdv_profile.data[i/BITS_IN_U64] |= ((sumvector[i] > ((content.size-2-skipped)/2)) << (i&(BITS_IN_U64-1)));
     }
@@ -139,7 +134,7 @@ digram_prob_map(HDVector *symbols, size_t count, HDVector *profile, struct prob_
 }
 
 void
-digram_table(float distance_threshold, const char *filename)
+digram_table(const char *filename)
 {
     uint32_t results[SYMCOUNT*SYMCOUNT] = {0};
 
@@ -149,13 +144,14 @@ digram_table(float distance_threshold, const char *filename)
         for (size_t j = 0; j < SYMCOUNT; j++) {
             digram_prob_map(hdv_symbol_table, SYMCOUNT, &hdv_profile, pmap, i, j);
             for (size_t k = 0; k < SYMCOUNT; k++) {
-                if (pmap[k].probability < distance_threshold) {
+                if (pmap[k].probability < DISTANCE_THRESHOLD) {
                     results[i*SYMCOUNT+j]++;
-                }
-                else continue;
+                } else continue;
             }
         }
     }
+
+    // write to file
 
     FILE *file;
     int rc;
@@ -192,7 +188,7 @@ load_profile(const char *filename)
         util_log("FATAL", "could not load profile '%s'", filename);
         exit(1);
     }
-    util_log("INFO", "loaded profile from file %s", filename);
+    util_log("INFO", "loaded profile from '%s'", filename);
 }
 
 void
@@ -237,16 +233,17 @@ main(int argc, char *argv[])
         make_profile(text_filename);
         util_log("INFO", "generated new profile based on '%s'", text_filename);
 
-        util_log("INFO", "saving profile to '%s'", profile_filename);
         if (!hdvector_store_to_file(profile_filename, &hdv_profile, hdv_symbol_table, ARRLEN(hdv_symbol_table)))
             util_log("WARN", "failed to store profile", profile_filename);
+        else
+            util_log("INFO", "saved profile to '%s'", profile_filename);
 
         exit(0);
     }
 
     if (digram_table_arg) {
         load_profile(profile_filename);
-        digram_table(0.492, digram_filename);
+        digram_table(digram_filename);
         exit(0);
     }
 
