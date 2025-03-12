@@ -1,6 +1,6 @@
 # Hyperdimensional Computing Experiment
 
-Inspired by a seminar on "Computing with Hyper-Dimensional Vectors" by Pentti Kanerva, this project is an experimental implementation of a concepts described in the talk.
+Inspired by a seminar on "Computing with Hyper-Dimensional Vectors" by Pentti Kanerva, this project is an experimental implementation of a concept described in the talk.
 
 In the talk, Kanerva describes an application of Hyper-Dimension Computing. 27 random High Dimensional Vectors (HDVs) are used to represent the letters A-Z and a space. These are the "27 seed vectors". Given an input text, each trigram's seed vectors are combined into a *profile vector*. This profile vector accumulates the information of all the trigrams from the input text. As such, "queries" can be formed to extract information from the profile. In this case, the queries have the form of "given two characters, what is the next most likely character?". They are constructed by combining two seed vectors and multiplying it with the profile vector. This yields a query vector that is then compared to the 27 seed vectors to determine which next character is most likely.
 
