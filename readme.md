@@ -1,10 +1,10 @@
 # Hyperdimensional Computing Experiment
 
-Inspired by a seminar on "Computing with Hyper-Dimensional Vectors" by Pentti Kanerva, this project is an experimental implementation one of the concepts described in the talk.
+Inspired by a seminar on "Computing with Hyper-Dimensional Vectors" by Pentti Kanerva, this project is an experimental implementation of a concepts described in the talk.
 
-In the talk, Kanerva describes an application of Hyper-Dimension Computing. 27 random High Dimensional Vectors (HDVs) are used to represent the letters A-Z and a space. These are the "27 seed vectors". Given an input text, each trigram's seed vectors are combined and accumulated into a *profile vector*. This profile vector is encoded with the the information of all the trigrams from the input text. As such, "queries" can be formed to extract information from the profile. In this case, the queries have the form of "given two characters, what is the next most likely character?". They are constructed by combining two seed vectors and multiplying it with the profile vector. This yields a query vector that is then compared to the 27 seed vectors to determine which next character is most likely.
+In the talk, Kanerva describes an application of Hyper-Dimension Computing. 27 random High Dimensional Vectors (HDVs) are used to represent the letters A-Z and a space. These are the "27 seed vectors". Given an input text, each trigram's seed vectors are combined into a *profile vector*. This profile vector accumulates the information of all the trigrams from the input text. As such, "queries" can be formed to extract information from the profile. In this case, the queries have the form of "given two characters, what is the next most likely character?". They are constructed by combining two seed vectors and multiplying it with the profile vector. This yields a query vector that is then compared to the 27 seed vectors to determine which next character is most likely.
 
-Much was left out of this brief summary. The slide deck (2) linked below contains a light, written summary of the experiment. The slide deck from the seminar (1). The paper (3) contains all the information required to understand the project.
+Much was left out of this brief summary. The slide deck (2) linked below contains a light, written summary of the experiment. The slide deck supports the seminar (1). The paper (3) contains all the information required to implement the project.
 
 ## Sources
 
@@ -14,7 +14,7 @@ Much was left out of this brief summary. The slide deck (2) linked below contain
 
 # Usage
 
-First, find a large text file. For example, I used the [complete works of Shakespeare](https://ocw.mit.edu/ans7870/6/6.006/s08/lecturenotes/files/t8.shakespeare.txt). Nearly 900,000 words. Then, generate the seed vectors and the profile vector from this text with `make-profile`. Depending on your hardware, this may take a minute or so.
+First, find a large text file. For example, I used the [complete works of Shakespeare](https://ocw.mit.edu/ans7870/6/6.006/s08/lecturenotes/files/t8.shakespeare.txt). Nearly 900,000 words. Then, generate the seed vectors and the profile vector from this text with `make-profile`. Depending on your hardware, this may take a minute or so. Please be patient.
 ```sh
 $ ./hdc-experiment make-profile input.txt profile.hdv
 ```
